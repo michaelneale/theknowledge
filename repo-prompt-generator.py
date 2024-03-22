@@ -46,12 +46,15 @@ def get_largest_files(directory, num_files=5):
                 heapq.heappushpop(largest_files, (file_size, file))
     return [file for _, file in largest_files]
 
-def prompt_user_for_exclusion(directory, project_dir, file_count_threshold=10, size_threshold=20):
+def prompt_user_for_exclusion(directory, project_dir, auto_generate=False, file_count_threshold=10, size_threshold=20):
     if directory == project_dir:
         return False, []  # Skip exclusion prompt for the root directory
 
     file_count = get_file_count(directory)
     directory_size_kb = get_directory_size_in_kb(directory)
+
+    if auto_generate:
+        return False, []
 
     if file_count > file_count_threshold or directory_size_kb > size_threshold:
         print(f"\nDirectory: {directory}")
@@ -76,7 +79,20 @@ def prompt_user_for_exclusion(directory, project_dir, file_count_threshold=10, s
 
     return False, []
 
-def extract_source_code(project_dirs, excluded_paths):
+def get_total_source_code_size(project_dirs, excluded_paths):
+    total_size = 0
+    for project_dir in project_dirs:
+        ignored_patterns = get_ignored_patterns(project_dir, excluded_paths)
+        for root, dirs, files in os.walk(project_dir):
+            if '.git' in dirs:
+                dirs.remove('.git')  # Skip the .git directory
+            for file in files:
+                file_path = os.path.join(root, file)
+                if not should_ignore(file_path, ignored_patterns, project_dir):
+                    total_size += os.path.getsize(file_path)
+    return total_size
+
+def extract_source_code(project_dirs, excluded_paths, auto_generate=False):
     file_tree = []
     file_contents = []
     for project_dir in project_dirs:
@@ -84,7 +100,7 @@ def extract_source_code(project_dirs, excluded_paths):
         for root, dirs, files in os.walk(project_dir):
             if '.git' in dirs:
                 dirs.remove('.git')  # Skip the .git directory
-            exclude, extensions = prompt_user_for_exclusion(root, project_dir)
+            exclude, extensions = prompt_user_for_exclusion(root, project_dir, auto_generate)
             if exclude:
                 ignored_patterns.append(os.path.relpath(root, project_dir))
                 dirs[:] = []  # Skip subdirectories of the excluded directory
@@ -124,9 +140,26 @@ for i, project_dir in enumerate(project_dirs):
         print(f"The provided directory does not exist: {project_dirs[i]}")
         sys.exit(1)
 
-# Extract the source code and file tree
+# Calculate the total size of the source code files
 excluded_paths = []
-output = extract_source_code(project_dirs, excluded_paths)
+total_size = get_total_source_code_size(project_dirs, excluded_paths)
+# convert to KB
+total_size = round(total_size / 1024, 2)
+print(f"Estimated size of knowledge.txt: {total_size} KB")
+
+while True:
+    choice = input("Do you want to (G)enerate the file now or (C)ontinue with prompts? ").lower()
+    if choice == 'g':
+        auto_generate = True
+        break
+    elif choice == 'c':
+        auto_generate = False
+        break
+    else:
+        print("Invalid choice. Please enter 'G' or 'C'.")
+
+# Extract the source code and file tree
+output = extract_source_code(project_dirs, excluded_paths, auto_generate)
 
 # Set the default output file name
 output_file = "knowledge.txt"
