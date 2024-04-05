@@ -6,6 +6,8 @@ import fnmatch
 def get_ignored_patterns(project_dir, excluded_paths):
     gitignore_path = os.path.join(project_dir, ".gitignore")
     ignored_patterns = excluded_paths.copy()
+    # Always ignore node_modules
+    ignored_patterns.append('node_modules')
     if os.path.exists(gitignore_path):
         with open(gitignore_path, "r") as file:
             ignored_patterns.extend(file.read().splitlines())
@@ -14,13 +16,16 @@ def get_ignored_patterns(project_dir, excluded_paths):
 def should_ignore(path, ignored_patterns, project_dir):
     relative_path = os.path.relpath(path, project_dir)
     for pattern in ignored_patterns:
-        if fnmatch.fnmatch(relative_path, pattern):
+        if fnmatch.fnmatch(relative_path, pattern) or 'node_modules' in path.split(os.sep):
             return True
     return False
 
 def get_directory_size_in_kb(directory, ignored_patterns, project_dir, specified_extensions):
     total_size = 0
     for root, dirs, files in os.walk(directory):
+        # Explicitly remove node_modules from dirs to not walk into it
+        if 'node_modules' in dirs:
+            dirs.remove('node_modules')
         for file in files:
             file_path = os.path.join(root, file)
             if not should_ignore(file_path, ignored_patterns, project_dir):
@@ -32,6 +37,9 @@ def get_directory_size_in_kb(directory, ignored_patterns, project_dir, specified
 def get_file_count(directory, ignored_patterns, project_dir, specified_extensions):
     count = 0
     for root, dirs, files in os.walk(directory):
+        # Explicitly remove node_modules from dirs to not walk into it
+        if 'node_modules' in dirs:
+            dirs.remove('node_modules')
         for file in files:
             file_path = os.path.join(root, file)
             if not should_ignore(file_path, ignored_patterns, project_dir):
@@ -43,6 +51,9 @@ def get_file_count(directory, ignored_patterns, project_dir, specified_extension
 def get_largest_files(directory, num_files=5):
     largest_files = []
     for root, dirs, files in os.walk(directory):
+        # Explicitly remove node_modules from dirs to not walk into it
+        if 'node_modules' in dirs:
+            dirs.remove('node_modules')
         for file in files:
             file_path = os.path.join(root, file)
             file_size = os.path.getsize(file_path)
@@ -53,8 +64,8 @@ def get_largest_files(directory, num_files=5):
     return [file for _, file in largest_files]
 
 def prompt_user_for_exclusion(directory, project_dir, ignored_patterns, specified_extensions, total_size, file_count_threshold=10, size_threshold=20):
-    if directory == project_dir:
-        return False, []  # Skip exclusion prompt for the root directory
+    if directory == project_dir or 'node_modules' in directory.split(os.sep):
+        return False, []  # Skip exclusion prompt for the root directory and node_modules
 
     file_count = get_file_count(directory, ignored_patterns, project_dir, specified_extensions)
     directory_size_kb = get_directory_size_in_kb(directory, ignored_patterns, project_dir, specified_extensions)
@@ -92,6 +103,8 @@ def get_extension_sizes(project_dirs, excluded_paths):
         for root, dirs, files in os.walk(project_dir):
             if '.git' in dirs:
                 dirs.remove('.git')  # Skip the .git directory
+            if 'node_modules' in dirs:
+                dirs.remove('node_modules')  # Always skip node_modules
             for file in files:
                 file_path = os.path.join(root, file)
                 if not should_ignore(file_path, ignored_patterns, project_dir):
@@ -110,6 +123,8 @@ def get_total_source_code_size(project_dirs, excluded_paths, specified_extension
         for root, dirs, files in os.walk(project_dir):
             if '.git' in dirs:
                 dirs.remove('.git')  # Skip the .git directory
+            if 'node_modules' in dirs:
+                dirs.remove('node_modules')  # Always skip node_modules
             for file in files:
                 file_path = os.path.join(root, file)
                 if not should_ignore(file_path, ignored_patterns, project_dir):
@@ -139,6 +154,8 @@ def extract_source_code(project_dirs, excluded_paths, specified_extensions, file
         for root, dirs, files in os.walk(project_dir):
             if '.git' in dirs:
                 dirs.remove('.git')  # Skip the .git directory
+            if 'node_modules' in dirs:
+                dirs.remove('node_modules')  # Always skip node_modules
             if should_ignore(root, ignored_patterns, project_dir):
                 dirs[:] = []  # Skip subdirectories of the ignored directory
                 continue
