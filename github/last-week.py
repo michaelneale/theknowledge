@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import os
 
 # GitHub personal access token
-access_token = os.environ.get("GITHUB_ACCESS_TOKEN")
+access_token = os.environ.get("GITHUB_READ_TOKEN")
 
 # List of GitHub organizations to search
 organizations = ["TBD54566975", "tbdeng"]
@@ -20,6 +20,35 @@ headers = {
     "Authorization": f"Bearer {access_token}",
     "Accept": "application/vnd.github.v3+json",
 }
+
+def check_token_permissions():
+    for org in organizations:
+        # Test fetching repositories
+        repo_response = requests.get(repos_url.format(org=org), headers=headers)
+        if repo_response.status_code == 403:
+            print(f"Error: Your token does not have permission to fetch repositories for organization '{org}'.")
+            return False
+
+        # Test searching for issues
+        repos = repo_response.json()
+        if repos:
+            test_repo = repos[0]['name']
+            search_params = {
+                "q": f"repo:{org}/{test_repo} is:issue is:closed",
+                "per_page": 1,
+            }
+            search_response = requests.get(search_url, headers=headers, params=search_params)
+            if search_response.status_code == 403:
+                print(f"Error: Your token does not have permission to search for issues in organization '{org}'.")
+                return False
+        else:
+            print(f"Warning: No repositories found for organization '{org}'. Skipping issue search test.")
+
+    return True
+
+if not check_token_permissions():
+    print("Token does not have the necessary permissions. Exiting.")
+    exit(1)
 
 # Calculate the date threshold (7 days ago)
 date_threshold = (datetime.now() - timedelta(days=7)).isoformat()
@@ -50,11 +79,12 @@ def fetch_and_write_summary(organization):
                         if items:
                             file.write(f"  {item_type.capitalize()}s:\n")
                             for item in items:
-                                body_summary = item['body'][:100] if item['body'] else "No description provided."
+                                body_summary = item['body'][:500] if item['body'] else "No description provided."
                                 file.write(f"  - {item['title']}: {body_summary}...\n")
                         else:
-                            # Note if no PRs/issues found
                             file.write(f"  No closed {item_type}s in the past week.\n")
+                    elif items_response.status_code == 403:
+                        file.write(f"  No recent activity found for {item_type}s in repository {repo_name}.\n")
                     else:
                         file.write(f"Error fetching {item_type}s for repository {repo_name}: {items_response.status_code}\n")
                 file.write("\n")  # Add space after each repo
